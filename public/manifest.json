@@ -1,0 +1,18 @@
+{
+    "name": "Houra",
+    "short_name": "Houra",
+    "description": "Weekly hours tracker for your pay period",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#141414",
+    "theme_color": "#6366f1",
+    "orientation": "portrait",
+    "icons": [
+    {
+        "src": "/icon.png",
+        "sizes": "1024x1024",
+        "type": "image/png",
+        "purpose": "any maskable"
+    }
+]
+}
