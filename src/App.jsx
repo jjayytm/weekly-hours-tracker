@@ -1462,8 +1462,7 @@ export default function WeeklyHoursTracker() {
                   <button key={id} type="button"
                     onClick={() => {
                       setTrendsViewMode(id);
-                      const now = new Date();
-                      setTrendsSelectedMonth(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`);
+                      setTrendsSelectedMonth(null);
                       setTrendsAnimKey(k=>k+1);
                     }}
                     style={{
