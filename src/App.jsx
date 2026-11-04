@@ -262,10 +262,7 @@ export default function WeeklyHoursTracker() {
 
   // Trends filter state
   const [trendsViewMode, setTrendsViewMode] = useState("weekly");
-  const [trendsSelectedMonth, setTrendsSelectedMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-  });
+  const [trendsSelectedMonth, setTrendsSelectedMonth] = useState(null);
   const [trendsAnimKey, setTrendsAnimKey] = useState(0);
 
   const bottomRef = useRef(null);
