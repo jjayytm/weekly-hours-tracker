@@ -251,6 +251,7 @@ export default function WeeklyHoursTracker() {
   const [visibleMonths, setVisibleMonths] = useState([]);       // active month keys in History
   const [expandedHistoryPeriods, setExpandedHistoryPeriods] = useState({});
   const [isMonthFilterOpen, setIsMonthFilterOpen] = useState(false);
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [showTrends, setShowTrends] = useState(false);
   const [slideNextProgress, setSlideNextProgress] = useState(0);
   const [slideThumbPx, setSlideThumbPx] = useState(0);
@@ -269,6 +270,7 @@ export default function WeeklyHoursTracker() {
 
   const bottomRef = useRef(null);
   const importFileInputRef = useRef(null);
+  const headerMenuRef = useRef(null);
   const logAnimTimeoutRef = useRef(null);
   const touchStartRef = useRef(null); // { x, y } for swipe detection
   const phaseRef = useRef(phase);
@@ -450,6 +452,13 @@ export default function WeeklyHoursTracker() {
     return () => {
       if (logAnimTimeoutRef.current) clearTimeout(logAnimTimeoutRef.current);
     };
+  }, []);
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(event.target)) setIsHeaderMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
   // Default History month filter: show latest two months with data
   useEffect(() => {
@@ -1079,6 +1088,50 @@ export default function WeeklyHoursTracker() {
     }
     .select-option .check { margin-left: auto; color: ${isDark ? "#c7d2fe" : "#4f46e5"}; }
     .select-option .opt-icon { opacity: 0.9; }
+    .header-menu-wrap { position: relative; }
+    .header-menu-trigger {
+      background: transparent;
+      border: none;
+      color: ${colors.textMuted};
+      font-size: 1.2rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0.3rem 0.4rem;
+    }
+    .header-menu-dropdown {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      min-width: 160px;
+      z-index: 100;
+      padding: 0.3rem;
+      background: ${colors.dropdownBg};
+      border-radius: 14px;
+      border: 1px solid ${colors.glassBorder};
+      box-shadow: ${isDark
+        ? "0 20px 60px rgba(0,0,0,0.55)"
+        : "0 18px 50px rgba(15, 23, 42, 0.12)"};
+      backdrop-filter: blur(${isDark ? "18px" : "24px"});
+      -webkit-backdrop-filter: blur(${isDark ? "18px" : "24px"});
+    }
+    .header-menu-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      padding: 0.6rem 0.75rem;
+      border-radius: 10px;
+      cursor: pointer;
+      color: ${colors.textMuted};
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      font-family: inherit;
+    }
+    .header-menu-item:hover { background: ${isDark ? "rgba(99, 102, 241, 0.12)" : "rgba(99, 102, 241, 0.10)"}; color: ${colors.text}; }
+    .header-menu-divider { height: 1px; background: ${colors.glassBorder}; margin: 0.3rem 0.2rem; }
+    .header-menu-item.danger { color: var(--danger); }
+    .header-menu-item.danger:hover { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
     .btn-liquid {
       position: relative;
       background: linear-gradient(135deg, #111827 0%, #020617 100%);
@@ -1946,7 +1999,7 @@ export default function WeeklyHoursTracker() {
       <div className="animated-bg" />
       
       {/* Header */}
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", backdropFilter: "blur(10px)", padding: "1rem", borderRadius: "20px", border: `1px solid ${colors.glassBorder}` }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", backdropFilter: "blur(10px)", padding: "1rem", borderRadius: "20px", border: `1px solid ${colors.glassBorder}`, position: "relative", zIndex: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", fontWeight: 700 }}>
           {/* FIXED: Added flexShrink: 0 to prevent squeezed circle */}
           <div style={{ width: 8, height: 8, flexShrink: 0, background: "#22d3ee", borderRadius: "50%", boxShadow: "0 0 10px #22d3ee" }} />
@@ -1956,8 +2009,25 @@ export default function WeeklyHoursTracker() {
           <button onClick={toggleTheme} style={{ background: "transparent", border: "none", fontSize: "1.2rem", cursor: "pointer", padding: "0 5px" }}>
              {isDark ? "☀️" : "🌙"}
           </button>
-          <button onClick={handleExport} style={{ background: "none", border: "none", color: colors.textMuted, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.1em" }}>EXPORT</button>
-          <button onClick={triggerImportPicker} style={{ background: "none", border: "none", color: colors.textMuted, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.1em" }}>IMPORT</button>
+          <div style={{ width: 1, height: 16, background: colors.glassBorder }}></div>
+          <div className="header-menu-wrap" ref={headerMenuRef}>
+            <button
+              className="header-menu-trigger"
+              onClick={() => setIsHeaderMenuOpen((v) => !v)}
+              aria-label="Menu"
+            >
+              ⋯
+            </button>
+            {isHeaderMenuOpen && (
+              <div className="header-menu-dropdown anim-scale-in">
+                <button className="header-menu-item" onClick={() => { setIsHeaderMenuOpen(false); handleExport(); }}>EXPORT</button>
+                <button className="header-menu-item" onClick={() => { setIsHeaderMenuOpen(false); triggerImportPicker(); }}>IMPORT</button>
+                <button className="header-menu-item" onClick={() => { setIsHeaderMenuOpen(false); goToHistory(); }}>HISTORY</button>
+                <div className="header-menu-divider"></div>
+                <button className="header-menu-item danger" onClick={() => { setIsHeaderMenuOpen(false); requestReset(); }}>RESET</button>
+              </div>
+            )}
+          </div>
           <input
             ref={importFileInputRef}
             type="file"
@@ -1965,9 +2035,6 @@ export default function WeeklyHoursTracker() {
             onChange={handleImportFileSelected}
             style={{ display: "none" }}
           />
-          <div style={{ width: 1, height: 16, background: colors.glassBorder }}></div>
-          <button onClick={goToHistory} style={{ background: "none", border: "none", color: colors.textMuted, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.1em" }}>HISTORY</button>
-          <button onClick={requestReset} style={{ background: "none", border: "none", color: colors.textMuted, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.1em" }}>RESET</button>
         </div>
       </header>
 
