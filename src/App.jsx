@@ -2010,6 +2010,7 @@ export default function WeeklyHoursTracker() {
              {isDark ? "☀️" : "🌙"}
           </button>
           <div style={{ width: 1, height: 16, background: colors.glassBorder }}></div>
+          <button onClick={goToHistory} style={{ background: "none", border: "none", color: colors.textMuted, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.1em" }}>HISTORY</button>
           <div className="header-menu-wrap" ref={headerMenuRef}>
             <button
               className="header-menu-trigger"
@@ -2022,7 +2023,6 @@ export default function WeeklyHoursTracker() {
               <div className="header-menu-dropdown anim-scale-in">
                 <button className="header-menu-item" onClick={() => { setIsHeaderMenuOpen(false); handleExport(); }}>EXPORT</button>
                 <button className="header-menu-item" onClick={() => { setIsHeaderMenuOpen(false); triggerImportPicker(); }}>IMPORT</button>
-                <button className="header-menu-item" onClick={() => { setIsHeaderMenuOpen(false); goToHistory(); }}>HISTORY</button>
                 <div className="header-menu-divider"></div>
                 <button className="header-menu-item danger" onClick={() => { setIsHeaderMenuOpen(false); requestReset(); }}>RESET</button>
               </div>
