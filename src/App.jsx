@@ -68,12 +68,56 @@ function formatWeekRange(satDate) {
   return `${d.toLocaleDateString("en-CA", opts)} – ${fri.toLocaleDateString("en-CA", opts)}`;
 }
 
-function formatPayPeriodRange(startDate) {
-    const s = new Date(startDate);
-    const start = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), s.getUTCDate(), 12));
-    const end   = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), s.getUTCDate() + 13, 12));
-    const opts  = { month: "short", day: "numeric", timeZone: "UTC" };
-    return `${start.toLocaleDateString("en-CA", opts)} – ${end.toLocaleDateString("en-CA", opts)}`;
+function getShiftCalendarDate(weekStartIso, dayIndex) {
+  const base = new Date(weekStartIso);
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+  d.setDate(d.getDate() + (Number(dayIndex) || 0));
+  return d;
+}
+
+function getSemimonthlyPeriodKey(date) {
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const period = date.getDate() <= 15 ? 1 : 2;
+  return `${y}-${String(m).padStart(2, "0")}-P${period}`;
+}
+
+function parseSemimonthlyPeriodKey(key) {
+  const [ym, periodStr] = key.split("-P");
+  const [year, month] = ym.split("-").map(Number);
+  return { year, month, period: Number(periodStr) };
+}
+
+function sortSemimonthlyPeriodKeysDesc(a, b) {
+  const pa = parseSemimonthlyPeriodKey(a);
+  const pb = parseSemimonthlyPeriodKey(b);
+  if (pa.year !== pb.year) return pb.year - pa.year;
+  if (pa.month !== pb.month) return pb.month - pa.month;
+  return pb.period - pa.period;
+}
+
+function formatSemimonthlyPayPeriod(periodKey) {
+  const { year, month, period } = parseSemimonthlyPeriodKey(periodKey);
+  const opts = { month: "short", day: "numeric" };
+  const lastDay = new Date(year, month, 0).getDate();
+  if (period === 1) {
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month - 1, 15);
+    const paycheck = new Date(year, month - 1, 20);
+    return {
+      range: `${start.toLocaleDateString("en-CA", opts)} – ${end.toLocaleDateString("en-CA", opts)}`,
+      paycheck: paycheck.toLocaleDateString("en-CA", opts),
+    };
+  }
+  const start = new Date(year, month - 1, 16);
+  const end = new Date(year, month - 1, lastDay);
+  const payMonth = month === 12 ? 1 : month + 1;
+  const payYear = month === 12 ? year + 1 : year;
+  const paycheck = new Date(payYear, payMonth - 1, 5);
+  return {
+    range: `${start.toLocaleDateString("en-CA", opts)} – ${end.toLocaleDateString("en-CA", opts)}`,
+    paycheck: paycheck.toLocaleDateString("en-CA", opts),
+  };
 }
 
 // ─── CUSTOM COMPONENTS ────────────────────────────────────────────────────────
@@ -205,6 +249,7 @@ export default function WeeklyHoursTracker() {
   // "idle" | "out" | "in" — drives the week-change date transition animation
   const [weekTransition, setWeekTransition] = useState("idle");
   const [visibleMonths, setVisibleMonths] = useState([]);       // active month keys in History
+  const [expandedHistoryPeriods, setExpandedHistoryPeriods] = useState({});
   const [isMonthFilterOpen, setIsMonthFilterOpen] = useState(false);
   const [showTrends, setShowTrends] = useState(false);
   const [slideNextProgress, setSlideNextProgress] = useState(0);
@@ -1152,22 +1197,25 @@ export default function WeeklyHoursTracker() {
       ).values()
     ).sort((a, b) => b.key.localeCompare(a.key)); // latest first
 
-    // Group weeks into pay periods anchored to Feb 28 2026 (real pay cycle start).
-    // Each period = 14 days. Use UTC noon to avoid DST/timezone off-by-one.
-    const PAY_ANCHOR_MS = Date.UTC(2026, 1, 28, 12); // Feb 28 2026 UTC noon
+    // Group archived weeks into semimonthly pay periods (1st–15th, 16th–EOM).
+    // Shifts are assigned by actual work day (weekStart + dayIndex), so straddling weeks split correctly.
     const sortedArchives = [...archives].sort(
       (a, b) => new Date(a.weekStart) - new Date(b.weekStart)
     );
     const groups = {};
     sortedArchives.forEach((week) => {
-      const d = new Date(week.weekStart);
-      const weekNoonMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12);
-      const diffDays = Math.round((weekNoonMs - PAY_ANCHOR_MS) / (1000 * 60 * 60 * 24));
-      const periodIdx = Math.floor(diffDays / 14);
-      if (!groups[periodIdx]) groups[periodIdx] = [];
-      groups[periodIdx].push(week);
+      const shiftsByPeriod = {};
+      (week.shifts ?? []).forEach((shift) => {
+        const periodKey = getSemimonthlyPeriodKey(getShiftCalendarDate(week.weekStart, shift.dayIndex));
+        if (!shiftsByPeriod[periodKey]) shiftsByPeriod[periodKey] = [];
+        shiftsByPeriod[periodKey].push(shift);
+      });
+      Object.entries(shiftsByPeriod).forEach(([periodKey, periodShifts]) => {
+        if (!groups[periodKey]) groups[periodKey] = [];
+        groups[periodKey].push({ week, periodShifts });
+      });
     });
-    const sortedPeriodKeys = Object.keys(groups).sort((a, b) => b - a);
+    const sortedPeriodKeys = Object.keys(groups).sort(sortSemimonthlyPeriodKeysDesc);
 
     // ── Trends data pipeline ──────────────────────────────────────────────────
     const currentWeekData = appState
@@ -1663,36 +1711,44 @@ export default function WeeklyHoursTracker() {
         {sortedPeriodKeys.map(key => {
             const periodWeeks = groups[key];
             // Filter out pay periods whose weeks are all in months that are currently hidden
-            const periodHasVisibleMonth = periodWeeks.some(w => {
+            const periodHasVisibleMonth = periodWeeks.some(({ week: w }) => {
               const d = new Date(w.weekStart);
               const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
               return visibleMonths.length === 0 || visibleMonths.includes(mk);
             });
             if (!periodHasVisibleMonth) return null;
-            periodWeeks.sort((a, b) => new Date(b.weekStart) - new Date(a.weekStart));
-            // Period label: anchor + (periodIdx × 14) days, rendered in UTC to avoid timezone shift
-            const pStartMs = PAY_ANCHOR_MS + Number(key) * 14 * 24 * 60 * 60 * 1000;
-            const pStart = new Date(pStartMs);
-            const periodHoursTotal = periodWeeks.reduce((acc, wk) => acc + (wk.shifts ?? []).reduce((s, sh) => s + (Number(sh.hours) || 0), 0), 0);
-            const periodTipsTotal = periodWeeks.reduce((acc, wk) => acc + (wk.tips ?? []).reduce((s, t) => s + (Number(t.amount) || 0), 0), 0);
+            periodWeeks.sort((a, b) => new Date(b.week.weekStart) - new Date(a.week.weekStart));
+            const { range: periodRange } = formatSemimonthlyPayPeriod(key);
+            const periodHoursTotal = periodWeeks.reduce(
+              (acc, { periodShifts }) => acc + periodShifts.reduce((s, sh) => s + (Number(sh.hours) || 0), 0),
+              0
+            );
+            const periodTipsTotal = periodWeeks.reduce(
+              (acc, { periodShifts }) => acc + periodShifts.reduce((s, sh) => s + (Number(sh.tipAmount) || 0), 0),
+              0
+            );
+            const isPeriodExpanded = !!expandedHistoryPeriods[key];
+            const hiddenWeekCount = Math.max(0, periodWeeks.length - 2);
+            const weeksToShow = isPeriodExpanded || hiddenWeekCount === 0
+              ? periodWeeks
+              : periodWeeks.slice(0, 2);
 
             return (
                 <div key={key} className="glass-panel anim-enter" style={{ marginBottom: "2rem", overflow: "hidden" }}>
                     <div style={{ background: isDark ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.4)", padding: "1rem 1.5rem", borderBottom: `1px solid ${colors.glassBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
                             <div style={{ fontSize: "0.7rem", color: colors.textMuted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.2rem" }}>PAY PERIOD</div>
-                            <div style={{ fontSize: "1rem", fontWeight: 700 }}>{formatPayPeriodRange(pStart)}</div>
+                            <div style={{ fontSize: "1rem", fontWeight: 700 }}>{periodRange}</div>
                         </div>
                     </div>
                     <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-                        {periodWeeks.map((wk, i) => {
-                            const wkShifts = wk.shifts ?? [];
-                            const wkTips = wk.tips ?? [];
+                        {weeksToShow.map(({ week: wk, periodShifts }) => {
+                            const wkShifts = periodShifts;
                             const wkTotal = wkShifts.reduce((sum, s) => sum + (Number(s.hours) || 0), 0);
-                            const wkTipsTotal = wkTips.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+                            const wkTipsTotal = wkShifts.reduce((sum, s) => sum + (Number(s.tipAmount) || 0), 0);
                             const flatIndex = archives.findIndex(w => w && w.weekStart === wk.weekStart);
                             return (
-                                <div key={i} style={{ padding: "1rem", background: isDark ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.5)", borderRadius: "16px", border: `1px solid ${colors.glassBorder}` }}>
+                                <div key={wk.weekStart} style={{ padding: "1rem", background: isDark ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.5)", borderRadius: "16px", border: `1px solid ${colors.glassBorder}` }}>
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.4rem" }}>
                                         <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
                                           <div style={{ fontSize: "0.9rem", color: isDark ? "#e2e8f0" : "#334155" }}>{formatWeekRange(wk.weekStart)}</div>
@@ -1726,10 +1782,33 @@ export default function WeeklyHoursTracker() {
                                 </div>
                             )
                         })}
+                        {hiddenWeekCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedHistoryPeriods(prev => ({ ...prev, [key]: !isPeriodExpanded }))}
+                            style={{
+                              background: "transparent",
+                              border: `1px dashed ${colors.glassBorder}`,
+                              borderRadius: "12px",
+                              padding: "0.65rem 1rem",
+                              color: colors.textMuted,
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase",
+                              cursor: "pointer",
+                              width: "100%",
+                            }}
+                          >
+                            {isPeriodExpanded
+                              ? "Condense"
+                              : "Earlier Weeks"}
+                          </button>
+                        )}
                     </div>
                     <div style={{ background: "rgba(99, 102, 241, 0.1)", padding: "0.8rem 1.5rem", borderTop: `1px solid ${colors.glassBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.2rem" }}>
-                          <span style={{ fontSize: "0.75rem", color: "#a5b4fc", textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Bi-Weekly</span>
+                          <span style={{ fontSize: "0.75rem", color: "#a5b4fc", textTransform: "uppercase", letterSpacing: "0.05em" }}>Period Total</span>
                           {periodTipsTotal > 0 && (
                             <span className="font-mono" style={{ fontSize: "0.7rem", fontWeight: 500, color: "#34d399" }}>
                               {fmtMoney(periodTipsTotal)} tips
