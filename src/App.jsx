@@ -268,6 +268,7 @@ export default function WeeklyHoursTracker() {
   const [trendsAnimKey, setTrendsAnimKey] = useState(0);
 
   const bottomRef = useRef(null);
+  const importFileInputRef = useRef(null);
   const logAnimTimeoutRef = useRef(null);
   const touchStartRef = useRef(null); // { x, y } for swipe detection
   const phaseRef = useRef(phase);
@@ -635,6 +636,79 @@ export default function WeeklyHoursTracker() {
   };
 
   const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
+
+  // ─── EXPORT / IMPORT (backup & restore across devices) ─────────────────────
+  const backupDatestamp = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
+  const buildBackupPayload = () => {
+    const data = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      data[key] = localStorage.getItem(key);
+    }
+    return { exportedAt: new Date().toISOString(), origin: window.location.origin, localStorage: data };
+  };
+
+  const downloadJsonFile = (payload, filename) => {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExport = async () => {
+    const payload = buildBackupPayload();
+    const filename = `pay-backup-${backupDatestamp()}.json`;
+    const file = new File([JSON.stringify(payload, null, 2)], filename, { type: "application/json" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: filename });
+        return;
+      } catch {
+        // user cancelled share, or share failed — fall back to a direct download
+      }
+    }
+    downloadJsonFile(payload, filename);
+  };
+
+  const triggerImportPicker = () => importFileInputRef.current?.click();
+
+  const handleImportFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // reset so selecting the same file again still fires onChange
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const importedEntries = parsed && typeof parsed === "object" ? parsed.localStorage : null;
+      if (!importedEntries || typeof importedEntries !== "object") {
+        window.alert("This file doesn't look like a valid backup.");
+        return;
+      }
+      const count = Object.keys(importedEntries).length;
+      const confirmed = window.confirm(`Restore ${count} item(s) from this backup?\n\nYour current data on this device will be backed up automatically, then overwritten.`);
+      if (!confirmed) return;
+
+      downloadJsonFile(buildBackupPayload(), `pay-backup-before-import-${backupDatestamp()}.json`);
+
+      Object.entries(importedEntries).forEach(([key, value]) => {
+        localStorage.setItem(key, value);
+      });
+
+      window.alert(`Restored ${count} item(s). The app will now reload.`);
+      window.location.reload();
+    } catch {
+      window.alert("Could not read this backup file. No changes were made.");
+    }
+  };
 
   const toggleMonthFilter = (monthKey) => {
     setVisibleMonths(prev =>
@@ -1882,6 +1956,15 @@ export default function WeeklyHoursTracker() {
           <button onClick={toggleTheme} style={{ background: "transparent", border: "none", fontSize: "1.2rem", cursor: "pointer", padding: "0 5px" }}>
              {isDark ? "☀️" : "🌙"}
           </button>
+          <button onClick={handleExport} style={{ background: "none", border: "none", color: colors.textMuted, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.1em" }}>EXPORT</button>
+          <button onClick={triggerImportPicker} style={{ background: "none", border: "none", color: colors.textMuted, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.1em" }}>IMPORT</button>
+          <input
+            ref={importFileInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleImportFileSelected}
+            style={{ display: "none" }}
+          />
           <div style={{ width: 1, height: 16, background: colors.glassBorder }}></div>
           <button onClick={goToHistory} style={{ background: "none", border: "none", color: colors.textMuted, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.1em" }}>HISTORY</button>
           <button onClick={requestReset} style={{ background: "none", border: "none", color: colors.textMuted, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.1em" }}>RESET</button>
