@@ -457,23 +457,25 @@ export default function WeeklyHoursTracker() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-  // Default History month filter: show latest two months with data
+  // Default History month filter: show latest two months with data (archived or current/unswiped)
   useEffect(() => {
     const weeks = appState?.archivedWeeks ?? [];
-    if (!weeks.length) {
+    const hasCurrentData = !!appState && ((appState.shifts ?? []).length || (appState.tips ?? []).length);
+    if (!weeks.length && !hasCurrentData) {
       if (visibleMonths.length) setVisibleMonths([]);
       return;
     }
     if (visibleMonths.length === 0) {
+      const monthSources = [...weeks.map(w => w.weekStart), ...(hasCurrentData ? [appState.weekStart] : [])];
       const monthKeys = Array.from(new Set(
-        weeks.map(w => {
-          const d = new Date(w.weekStart);
+        monthSources.map(ws => {
+          const d = new Date(ws);
           return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
         })
       )).sort((a, b) => b.localeCompare(a)); // latest first
       setVisibleMonths(monthKeys.slice(0, 2));
     }
-  }, [appState?.archivedWeeks]);
+  }, [appState?.archivedWeeks, appState?.weekStart, appState?.shifts, appState?.tips]);
   // Clear editing index if it becomes invalid (e.g. after load or data change)
   useEffect(() => {
     if (editingArchiveIndex != null && appState?.archivedWeeks != null && (editingArchiveIndex < 0 || editingArchiveIndex >= appState.archivedWeeks.length)) {
@@ -1309,10 +1311,19 @@ export default function WeeklyHoursTracker() {
   // ─── HISTORY VIEW ───────────────────────────────────────────────────────────
   if (phase === "history") {
     const archives = appState?.archivedWeeks || [];
-    // Build month metadata from archives
+    // The current, unswiped week — included alongside archives so its shifts count toward
+    // pay periods immediately, without requiring the user to archive it first. It can never
+    // duplicate an archived week: archiving is what moves a week's data into archivedWeeks,
+    // and editing an archived week writes back into archivedWeeks, never into appState.shifts.
+    const currentWeekEntry = appState && ((appState.shifts ?? []).length || (appState.tips ?? []).length)
+      ? { weekStart: appState.weekStart, shifts: appState.shifts ?? [], tips: appState.tips ?? [] }
+      : null;
+    const allWeeksForHistory = [...archives, ...(currentWeekEntry ? [currentWeekEntry] : [])];
+
+    // Build month metadata from archives + the current week
     const monthMeta = Array.from(
       new Map(
-        archives.map(w => {
+        allWeeksForHistory.map(w => {
           const d = new Date(w.weekStart);
           const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
           const label = d.toLocaleDateString("en-CA", { month: "short", year: "numeric" });
@@ -1321,13 +1332,13 @@ export default function WeeklyHoursTracker() {
       ).values()
     ).sort((a, b) => b.key.localeCompare(a.key)); // latest first
 
-    // Group archived weeks into semimonthly pay periods (1st–15th, 16th–EOM).
+    // Group archived weeks + the current week into semimonthly pay periods (1st–15th, 16th–EOM).
     // Shifts are assigned by actual work day (weekStart + dayIndex), so straddling weeks split correctly.
-    const sortedArchives = [...archives].sort(
+    const sortedWeeksForPeriods = [...allWeeksForHistory].sort(
       (a, b) => new Date(a.weekStart) - new Date(b.weekStart)
     );
     const groups = {};
-    sortedArchives.forEach((week) => {
+    sortedWeeksForPeriods.forEach((week) => {
       const shiftsByPeriod = {};
       (week.shifts ?? []).forEach((shift) => {
         const periodKey = getSemimonthlyPeriodKey(getShiftCalendarDate(week.weekStart, shift.dayIndex));
@@ -1340,6 +1351,16 @@ export default function WeeklyHoursTracker() {
       });
     });
     const sortedPeriodKeys = Object.keys(groups).sort(sortSemimonthlyPeriodKeysDesc);
+    // A period is "in progress" if today's date falls within its 1st–15th / 16th–EOM range.
+    const isPeriodInProgress = (key) => {
+      const { year, month, period } = parseSemimonthlyPeriodKey(key);
+      const lastDay = new Date(year, month, 0).getDate();
+      const start = period === 1 ? new Date(year, month - 1, 1) : new Date(year, month - 1, 16);
+      const end = period === 1 ? new Date(year, month - 1, 15) : new Date(year, month - 1, lastDay);
+      const today = new Date();
+      const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      return todayMid >= start && todayMid <= end;
+    };
 
     // ── Trends data pipeline ──────────────────────────────────────────────────
     const currentWeekData = appState
@@ -1827,7 +1848,7 @@ export default function WeeklyHoursTracker() {
           </div>
         )}
 
-        {archives.length === 0 && (
+        {sortedPeriodKeys.length === 0 && (
           <div style={{ textAlign: "center", color: colors.textMuted, marginTop: "3rem" }}>No history available yet.</div>
         )}
 
@@ -1850,6 +1871,7 @@ export default function WeeklyHoursTracker() {
               (acc, { periodShifts }) => acc + periodShifts.reduce((s, sh) => s + (Number(sh.tipAmount) || 0), 0),
               0
             );
+            const periodInProgress = isPeriodInProgress(key);
             const isPeriodExpanded = !!expandedHistoryPeriods[key];
             const hiddenWeekCount = Math.max(0, periodWeeks.length - 2);
             const weeksToShow = isPeriodExpanded || hiddenWeekCount === 0
@@ -1861,7 +1883,14 @@ export default function WeeklyHoursTracker() {
                     <div style={{ background: isDark ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.4)", padding: "1rem 1.5rem", borderBottom: `1px solid ${colors.glassBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
                             <div style={{ fontSize: "0.7rem", color: colors.textMuted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.2rem" }}>PAY PERIOD</div>
-                            <div style={{ fontSize: "1rem", fontWeight: 700 }}>{periodRange}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <div style={{ fontSize: "1rem", fontWeight: 700 }}>{periodRange}</div>
+                              {periodInProgress && (
+                                <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.08em", padding: "0.15rem 0.5rem", borderRadius: "999px", border: "1px solid rgba(245, 158, 11, 0.4)", background: "rgba(245, 158, 11, 0.12)" }}>
+                                  In Progress
+                                </span>
+                              )}
+                            </div>
                         </div>
                     </div>
                     <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
