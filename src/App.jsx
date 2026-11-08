@@ -258,6 +258,7 @@ export default function WeeklyHoursTracker() {
   const [isMonthFilterOpen, setIsMonthFilterOpen] = useState(false);
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [showTrends, setShowTrends] = useState(false);
+  const [trendsReturnToMain, setTrendsReturnToMain] = useState(false);
   const [slideNextProgress, setSlideNextProgress] = useState(0);
   const [slideThumbPx, setSlideThumbPx] = useState(0);
   const [slideComplete, setSlideComplete] = useState(false);
@@ -736,6 +737,15 @@ export default function WeeklyHoursTracker() {
   const goToTracker = () => {
     setPhase("active");
     window.scrollTo({ top: 0, behavior: "instant" });
+  };
+
+  // Trends modal can only render while phase === "history" (that's where its JSX lives).
+  // These just track which page to return to on close — the modal itself is untouched.
+  const openTrendsFromHistory = () => { setTrendsReturnToMain(false); setShowTrends(true); };
+  const openTrendsFromMain = () => { setTrendsReturnToMain(true); setShowTrends(true); goToHistory(); };
+  const closeTrends = () => {
+    setShowTrends(false);
+    if (trendsReturnToMain) { setTrendsReturnToMain(false); goToTracker(); }
   };
 
   const handleTouchStart = (e) => {
@@ -1283,7 +1293,7 @@ export default function WeeklyHoursTracker() {
       width: 92%;
       margin: 0 auto;
     }
-    /* Main-page Trends summary card + restyled "Trends" button — subtle press feedback only */
+    /* Main-page Trends row (inside the Current Period box) — subtle press feedback only */
     .trends-summary-card {
       display: block;
       width: 100%;
@@ -1299,15 +1309,9 @@ export default function WeeklyHoursTracker() {
       transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.15s ease;
     }
     .trends-summary-card:active { transform: scale(0.985); opacity: 0.92; }
-    .trends-btn-refined {
-      -webkit-tap-highlight-color: transparent;
-      transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.15s ease, background 0.2s ease, border-color 0.2s ease;
-    }
-    .trends-btn-refined:active { transform: scale(0.96); opacity: 0.85; }
     @media (prefers-reduced-motion: reduce) {
-      .trends-summary-card, .trends-btn-refined { transition: none; }
-      .trends-summary-card:active, .trends-btn-refined:active { transform: none; }
-      .trends-summary-card.anim-enter { animation: none; }
+      .trends-summary-card { transition: none; }
+      .trends-summary-card:active { transform: none; }
     }
   `;
 
@@ -1492,7 +1496,7 @@ export default function WeeklyHoursTracker() {
         <style>{css}</style>
         <div className="animated-bg" />
         {showTrends && (
-          <div className="modal-overlay" onClick={() => setShowTrends(false)}>
+          <div className="modal-overlay" onClick={closeTrends}>
             <div
               className="glass-panel anim-enter"
               style={{ maxWidth: "440px", width: "93%", padding: "1.6rem 1.4rem 1.5rem" }}
@@ -1504,7 +1508,7 @@ export default function WeeklyHoursTracker() {
                   <div style={{ fontSize:"0.62rem", textTransform:"uppercase", letterSpacing:"0.16em", color:colors.textMuted, marginBottom:"0.2rem" }}>Performance</div>
                   <div style={{ fontSize:"1.15rem", fontWeight:700, letterSpacing:"-0.01em" }}>Trends</div>
                 </div>
-                <button type="button" onClick={()=>setShowTrends(false)} style={{ borderRadius:"999px", padding:"0.22rem 0.75rem", border:`1px solid ${colors.glassBorder}`, background:"transparent", color:colors.textMuted, fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.1em", cursor:"pointer", WebkitTapHighlightColor:"transparent" }}>✕ Close</button>
+                <button type="button" onClick={closeTrends} style={{ borderRadius:"999px", padding:"0.22rem 0.75rem", border:`1px solid ${colors.glassBorder}`, background:"transparent", color:colors.textMuted, fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.1em", cursor:"pointer", WebkitTapHighlightColor:"transparent" }}>✕ Close</button>
               </div>
 
               {/* Filter row */}
@@ -1727,31 +1731,20 @@ export default function WeeklyHoursTracker() {
           <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
             <button
               type="button"
-              className="trends-btn-refined"
-              onClick={() => setShowTrends(true)}
-              aria-label="Open Performance Trends"
+              onClick={openTrendsFromHistory}
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.45rem",
-                minHeight: "44px",
-                padding: "0.5rem 0.9rem",
-                borderRadius: "999px",
-                border: `1px solid rgba(99, 102, 241, ${isDark ? 0.35 : 0.25})`,
-                background: isDark ? "rgba(99, 102, 241, 0.14)" : "rgba(99, 102, 241, 0.08)",
-                color: isDark ? "#c7d2fe" : "#4f46e5",
+                background: "transparent",
+                borderRadius: "10px",
+                border: "none",
+                color: colors.textMuted,
+                padding: "0.25rem 0.5rem",
                 cursor: "pointer",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                letterSpacing: "0.08em",
+                fontSize: "0.7rem",
+                letterSpacing: "0.16em",
                 textTransform: "uppercase",
+                opacity: 0.8,
               }}
             >
-              <span style={{ display: "inline-flex", alignItems: "flex-end", gap: "2px", height: "12px" }}>
-                <span style={{ width: "3px", height: "50%", borderRadius: "2px", background: "linear-gradient(180deg, #22d3ee, #818cf8)" }} />
-                <span style={{ width: "3px", height: "80%", borderRadius: "2px", background: "linear-gradient(180deg, #22d3ee, #818cf8)" }} />
-                <span style={{ width: "3px", height: "100%", borderRadius: "2px", background: "linear-gradient(180deg, #22d3ee, #818cf8)" }} />
-              </span>
               Trends
             </button>
             <button
@@ -2056,32 +2049,25 @@ export default function WeeklyHoursTracker() {
   const radius = 60;
   const circ = 2 * Math.PI * radius;
 
-  // ── Main-page Trends summary card data (read-only; does not touch the Trends modal's
-  // own calculations — just a small, separate sum over the same appState/archivedWeeks). ──
-  const trendsSummaryArchivesAsc = [...archives].sort((a, b) => new Date(a.weekStart) - new Date(b.weekStart));
-  const trendsSummaryCurrentHours = sumWeekHours(appState?.shifts);
-  const trendsSummaryBars = [
-    ...trendsSummaryArchivesAsc.map(w => ({ hours: sumWeekHours(w.shifts), isCurrent: false })),
-    ...(appState ? [{ hours: trendsSummaryCurrentHours, isCurrent: true }] : []),
-  ].slice(-6);
-  const lastArchivedWeek = trendsSummaryArchivesAsc[trendsSummaryArchivesAsc.length - 1] ?? null;
-  const prevArchivedWeek = trendsSummaryArchivesAsc[trendsSummaryArchivesAsc.length - 2] ?? null;
-  const lastArchivedHours = lastArchivedWeek ? sumWeekHours(lastArchivedWeek.shifts) : null;
-  const prevArchivedHours = prevArchivedWeek ? sumWeekHours(prevArchivedWeek.shifts) : null;
-  const lastWeekPercentChange = (lastArchivedHours != null && prevArchivedHours != null && prevArchivedHours > 0)
-    ? Math.round(((lastArchivedHours - prevArchivedHours) / prevArchivedHours) * 100)
+  // ── Main-page Trends row data (read-only; does not touch the Trends modal's own
+  // calculations — just a small, separate "this week so far vs last week, same point"
+  // comparison over the same appState/archivedWeeks). Recomputed every render, so it
+  // updates immediately whenever a shift is added/edited/deleted. ──
+  const todayDayIndexForTrends = (() => { const jsDay = new Date().getDay(); return jsDay === 6 ? 0 : jsDay + 1; })();
+  const trendsThisWeekTotalHours = sumWeekHours(appState?.shifts);
+  const trendsThisWeekSoFarHours = sumWeekHours(
+    (appState?.shifts ?? []).filter(sh => (Number(sh.dayIndex) || 0) <= todayDayIndexForTrends)
+  );
+  const trendsLastArchivedWeek = [...archives].sort((a, b) => new Date(b.weekStart) - new Date(a.weekStart))[0] ?? null;
+  const trendsLastWeekSoFarHours = trendsLastArchivedWeek
+    ? sumWeekHours((trendsLastArchivedWeek.shifts ?? []).filter(sh => (Number(sh.dayIndex) || 0) <= todayDayIndexForTrends))
     : null;
-  const trendsSummaryIsEmpty = trendsSummaryArchivesAsc.length === 0 && trendsSummaryCurrentHours === 0;
-  const trendsSummaryMaxHours = Math.max(1, ...trendsSummaryBars.map(b => b.hours));
-  const SPARK_W = 120, SPARK_H = 32;
-  const sparkN = trendsSummaryBars.length;
-  const sparkBarW = sparkN > 0 ? Math.max(4, Math.min(14, (SPARK_W - 4) / (sparkN * 1.6))) : 0;
-  const sparkGap = sparkN > 1 ? (SPARK_W - 4 - sparkBarW * sparkN) / (sparkN - 1) : 0;
-  const trendsSummarySparkBars = trendsSummaryBars.map((b, i) => {
-    const h = Math.max(2, (b.hours / trendsSummaryMaxHours) * (SPARK_H - 6));
-    return { x: 2 + i * (sparkBarW + sparkGap), y: SPARK_H - h - 2, height: h, width: sparkBarW, isCurrent: b.isCurrent };
-  });
-  const openTrendsSummary = () => { setShowTrends(true); goToHistory(); };
+  const trendsWeekPercentChange = (trendsLastWeekSoFarHours != null && trendsLastWeekSoFarHours > 0)
+    ? Math.round(((trendsThisWeekSoFarHours - trendsLastWeekSoFarHours) / trendsLastWeekSoFarHours) * 100)
+    : null;
+  const trendsRowText = trendsWeekPercentChange != null
+    ? `${trendsWeekPercentChange > 0 ? "↑" : trendsWeekPercentChange < 0 ? "↓" : "–"} ${Math.abs(trendsWeekPercentChange)}% vs this time last week`
+    : `This week · ${fmtHours(trendsThisWeekTotalHours)}`;
 
   return (
     <div
@@ -2265,6 +2251,18 @@ export default function WeeklyHoursTracker() {
 
         {/* Text Data */}
         <div style={{ flex: 1, minWidth: "220px" }}>
+          {safeEditIndex == null && (
+            <button
+              type="button"
+              className="trends-summary-card"
+              onClick={openTrendsFromMain}
+              aria-label="Open Performance Trends"
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", minHeight: "44px", marginBottom: "0.2rem" }}
+            >
+              <span style={{ fontSize: "0.8rem", color: colors.textMuted }}>{trendsRowText}</span>
+              <span style={{ fontSize: "0.85rem", color: colors.textMuted, opacity: 0.6, flexShrink: 0 }}>›</span>
+            </button>
+          )}
           <div style={{ marginBottom: "0.9rem" }}>
             <div style={{ fontSize: "0.9rem", color: colors.textMuted, marginBottom: "0.35rem" }}>Current Period</div>
             <div
@@ -2535,64 +2533,6 @@ export default function WeeklyHoursTracker() {
           </div>
         </div>
       </div>
-
-      {/* Trends summary card — quiet entry point into Performance Trends */}
-      {safeEditIndex === null && (
-        <button
-          type="button"
-          className="trends-summary-card glass-panel anim-enter"
-          onClick={openTrendsSummary}
-          aria-label="Open Performance Trends"
-          style={{ padding: "1.25rem 1.5rem", marginBottom: "2rem", minHeight: "44px", animationDelay: "0.05s" }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: trendsSummaryIsEmpty ? 0 : "0.9rem" }}>
-            <span style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: colors.textMuted }}>Trends</span>
-            <span style={{ fontSize: "0.9rem", color: colors.textMuted, opacity: 0.6 }}>›</span>
-          </div>
-
-          {trendsSummaryIsEmpty ? (
-            <div style={{ fontSize: "0.85rem", color: colors.textMuted, opacity: 0.75 }}>
-              Log a few shifts to see your trends.
-            </div>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", flexWrap: "wrap" }}>
-              <svg width={SPARK_W} height={SPARK_H} viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} style={{ flexShrink: 0 }}>
-                {trendsSummarySparkBars.map((b, i) => (
-                  <rect
-                    key={i}
-                    x={b.x}
-                    y={b.y}
-                    width={b.width}
-                    height={b.height}
-                    rx={b.width / 2}
-                    fill="url(#grad-success)"
-                    opacity={b.isCurrent ? 1 : 0.55}
-                  />
-                ))}
-              </svg>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", minWidth: 0 }}>
-                <div style={{ fontSize: "0.85rem" }}>
-                  <span style={{ color: colors.textMuted }}>This week</span>
-                  <span style={{ color: colors.textMuted }}> · </span>
-                  <span className="font-mono" style={{ fontWeight: 600, color: colors.text }}>{fmtHours(trendsSummaryCurrentHours)}</span>
-                </div>
-                {lastArchivedHours != null && (
-                  <div style={{ fontSize: "0.8rem", color: colors.textMuted }}>
-                    <span>Last week</span>
-                    <span> · </span>
-                    <span className="font-mono">{fmtHours(lastArchivedHours)}</span>
-                    {lastWeekPercentChange != null && (
-                      <span>
-                        {" · "}{lastWeekPercentChange > 0 ? "↑" : lastWeekPercentChange < 0 ? "↓" : "–"} {Math.abs(lastWeekPercentChange)}%
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </button>
-      )}
 
       {/* Input Section */}
       <div className="glass-panel anim-enter" style={{ padding: "2rem", animationDelay: "0.1s", marginBottom: "2rem" }}>
