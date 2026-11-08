@@ -741,8 +741,28 @@ export default function WeeklyHoursTracker() {
 
   // Trends modal can only render while phase === "history" (that's where its JSX lives).
   // These just track which page to return to on close — the modal itself is untouched.
-  const openTrendsFromHistory = () => { setTrendsReturnToMain(false); setShowTrends(true); };
-  const openTrendsFromMain = () => { setTrendsReturnToMain(true); setShowTrends(true); goToHistory(); };
+  const openTrendsFromHistory = () => {
+    setTrendsReturnToMain(false);
+    setTrendsViewMode("weekly");
+    setTrendsSelectedMonth(null);
+    setShowTrends(true);
+  };
+  const openTrendsFromMain = () => {
+    setTrendsReturnToMain(true);
+    setTrendsViewMode("weekly");
+    // Default to the current month if it has data, else the most recent month that does —
+    // using the same UTC month-key format the Trends modal's own month list is built from,
+    // so this always lines up with a real option in its dropdown. Only affects this open
+    // path; opening from History still leaves the filter at whatever it was (unchanged).
+    const toUtcMonthKey = (ws) => { const d = new Date(ws); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`; };
+    const hasCurrentWeekData = !!appState && ((appState.shifts ?? []).length || (appState.tips ?? []).length);
+    const weeksForDefault = [...archives, ...(hasCurrentWeekData ? [{ weekStart: appState.weekStart }] : [])];
+    const availableMonthKeys = Array.from(new Set(weeksForDefault.map(w => toUtcMonthKey(w.weekStart)))).sort((a, b) => b.localeCompare(a));
+    const currentMonthKey = toUtcMonthKey(new Date());
+    setTrendsSelectedMonth(availableMonthKeys.includes(currentMonthKey) ? currentMonthKey : (availableMonthKeys[0] ?? null));
+    setShowTrends(true);
+    goToHistory();
+  };
   const closeTrends = () => {
     setShowTrends(false);
     if (trendsReturnToMain) { setTrendsReturnToMain(false); goToTracker(); }
@@ -2050,20 +2070,23 @@ export default function WeeklyHoursTracker() {
   const circ = 2 * Math.PI * radius;
 
   // ── Main-page Trends row data (read-only; does not touch the Trends modal's own
-  // calculations — just a small, separate "this week so far vs last week, same point"
-  // comparison over the same appState/archivedWeeks). Recomputed every render, so it
-  // updates immediately whenever a shift is added/edited/deleted. ──
+  // calculations — just a small, separate comparison over the same appState/archivedWeeks).
+  // Recomputed every render, so it updates immediately whenever a shift is added/edited/
+  // deleted. "This week" is intentionally unfiltered (ALL shifts, any date) so every
+  // mutation always changes it; "last week" is cut off at whichever is later — today, or
+  // the latest shift date logged this week — for a fair same-point comparison. ──
   const todayDayIndexForTrends = (() => { const jsDay = new Date().getDay(); return jsDay === 6 ? 0 : jsDay + 1; })();
   const trendsThisWeekTotalHours = sumWeekHours(appState?.shifts);
-  const trendsThisWeekSoFarHours = sumWeekHours(
-    (appState?.shifts ?? []).filter(sh => (Number(sh.dayIndex) || 0) <= todayDayIndexForTrends)
-  );
+  const trendsThisWeekDayIndexes = (appState?.shifts ?? []).map(sh => Number(sh.dayIndex) || 0);
+  const trendsCutoffDayIndex = trendsThisWeekDayIndexes.length
+    ? Math.max(todayDayIndexForTrends, ...trendsThisWeekDayIndexes)
+    : todayDayIndexForTrends;
   const trendsLastArchivedWeek = [...archives].sort((a, b) => new Date(b.weekStart) - new Date(a.weekStart))[0] ?? null;
   const trendsLastWeekSoFarHours = trendsLastArchivedWeek
-    ? sumWeekHours((trendsLastArchivedWeek.shifts ?? []).filter(sh => (Number(sh.dayIndex) || 0) <= todayDayIndexForTrends))
+    ? sumWeekHours((trendsLastArchivedWeek.shifts ?? []).filter(sh => (Number(sh.dayIndex) || 0) <= trendsCutoffDayIndex))
     : null;
   const trendsWeekPercentChange = (trendsLastWeekSoFarHours != null && trendsLastWeekSoFarHours > 0)
-    ? Math.round(((trendsThisWeekSoFarHours - trendsLastWeekSoFarHours) / trendsLastWeekSoFarHours) * 100)
+    ? Math.round(((trendsThisWeekTotalHours - trendsLastWeekSoFarHours) / trendsLastWeekSoFarHours) * 100)
     : null;
   const trendsRowText = trendsWeekPercentChange != null
     ? `${trendsWeekPercentChange > 0 ? "↑" : trendsWeekPercentChange < 0 ? "↓" : "–"} ${Math.abs(trendsWeekPercentChange)}% vs this time last week`
