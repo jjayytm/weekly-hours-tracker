@@ -2064,24 +2064,24 @@ export default function WeeklyHoursTracker() {
   // ── Main-page Trends row data (read-only; does not touch the Trends modal's own
   // calculations — just a small, separate comparison over the same appState/archivedWeeks).
   // Recomputed every render, so it updates immediately whenever a shift is added/edited/
-  // deleted. "This week" is intentionally unfiltered (ALL shifts, any date) so every
-  // mutation always changes it; "last week" is cut off at whichever is later — today, or
-  // the latest shift date logged this week — for a fair same-point comparison. ──
-  const todayDayIndexForTrends = (() => { const jsDay = new Date().getDay(); return jsDay === 6 ? 0 : jsDay + 1; })();
+  // deleted. "This week" is the full total of all of this week's shifts; "last week" is the
+  // full total of the calendar previous week (the most recently archived week, but only if
+  // its weekStart is exactly 7 days before this week's — otherwise there's no "last week"). ──
   const trendsThisWeekTotalHours = sumWeekHours(appState?.shifts);
-  const trendsThisWeekDayIndexes = (appState?.shifts ?? []).map(sh => Number(sh.dayIndex) || 0);
-  const trendsCutoffDayIndex = trendsThisWeekDayIndexes.length
-    ? Math.max(todayDayIndexForTrends, ...trendsThisWeekDayIndexes)
-    : todayDayIndexForTrends;
   const trendsLastArchivedWeek = [...archives].sort((a, b) => new Date(b.weekStart) - new Date(a.weekStart))[0] ?? null;
-  const trendsLastWeekSoFarHours = trendsLastArchivedWeek
-    ? sumWeekHours((trendsLastArchivedWeek.shifts ?? []).filter(sh => (Number(sh.dayIndex) || 0) <= trendsCutoffDayIndex))
+  const toLocalMidnightMs = (iso) => { const d = new Date(iso); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+  const trendsIsCalendarLastWeek = !!(appState && trendsLastArchivedWeek)
+    && Math.round((toLocalMidnightMs(appState.weekStart) - toLocalMidnightMs(trendsLastArchivedWeek.weekStart)) / 86400000) === 7;
+  const trendsLastWeekTotalHours = trendsIsCalendarLastWeek ? sumWeekHours(trendsLastArchivedWeek.shifts) : null;
+  const trendsWeekRatioPercent = (trendsLastWeekTotalHours != null && trendsLastWeekTotalHours > 0)
+    ? Math.round((trendsThisWeekTotalHours / trendsLastWeekTotalHours) * 100)
     : null;
-  const trendsWeekPercentChange = (trendsLastWeekSoFarHours != null && trendsLastWeekSoFarHours > 0)
-    ? Math.round(((trendsThisWeekTotalHours - trendsLastWeekSoFarHours) / trendsLastWeekSoFarHours) * 100)
-    : null;
-  const trendsRowText = trendsWeekPercentChange != null
-    ? `${trendsWeekPercentChange > 0 ? "↑" : trendsWeekPercentChange < 0 ? "↓" : "–"} ${Math.abs(trendsWeekPercentChange)}% vs this time last week`
+  const trendsRowText = trendsWeekRatioPercent != null
+    ? (trendsWeekRatioPercent === 100
+        ? "Same as last week"
+        : trendsWeekRatioPercent < 100
+          ? `${trendsWeekRatioPercent}% of last week`
+          : `↑ ${trendsWeekRatioPercent - 100}% from last week`)
     : `This week · ${fmtHours(trendsThisWeekTotalHours)}`;
 
   return (
