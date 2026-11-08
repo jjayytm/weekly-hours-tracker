@@ -749,17 +749,9 @@ export default function WeeklyHoursTracker() {
   };
   const openTrendsFromMain = () => {
     setTrendsReturnToMain(true);
-    setTrendsViewMode("weekly");
-    // Default to the current month if it has data, else the most recent month that does —
-    // using the same UTC month-key format the Trends modal's own month list is built from,
-    // so this always lines up with a real option in its dropdown. Only affects this open
-    // path; opening from History still leaves the filter at whatever it was (unchanged).
-    const toUtcMonthKey = (ws) => { const d = new Date(ws); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`; };
-    const hasCurrentWeekData = !!appState && ((appState.shifts ?? []).length || (appState.tips ?? []).length);
-    const weeksForDefault = [...archives, ...(hasCurrentWeekData ? [{ weekStart: appState.weekStart }] : [])];
-    const availableMonthKeys = Array.from(new Set(weeksForDefault.map(w => toUtcMonthKey(w.weekStart)))).sort((a, b) => b.localeCompare(a));
-    const currentMonthKey = toUtcMonthKey(new Date());
-    setTrendsSelectedMonth(availableMonthKeys.includes(currentMonthKey) ? currentMonthKey : (availableMonthKeys[0] ?? null));
+    // Default to Monthly / All Months on this path only; opening from History is unaffected.
+    setTrendsViewMode("monthly");
+    setTrendsSelectedMonth(null);
     setShowTrends(true);
     goToHistory();
   };
